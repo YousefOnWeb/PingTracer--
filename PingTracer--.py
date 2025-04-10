@@ -6,7 +6,7 @@ import time
 import math
 import queue
 
-from traceroute_tool import trace_route 
+from traceroute_tool import trace_route
 from ping3 import ping
 
 #functions for color interpolation
@@ -77,13 +77,13 @@ class PingGraph(tk.Frame):
         
         if num_graphs > 1:
             new_canvas_height = (total_height - LABEL_HEIGHT)/num_graphs
-            new_canvas_height = new_canvas_height * 3
+            new_canvas_height = new_canvas_height
         else:
             new_canvas_height = (total_height - LABEL_HEIGHT) * 0.3
 
-        if new_canvas_height < 5:
-            new_canvas_height = 5
-            print("[RESIZE] Canvas height too small, setting minimum to 5")
+        if new_canvas_height < 3:
+            new_canvas_height = 3
+            print("[RESIZE] Canvas height too small, setting minimum to 3")
 
         self.graph_height = new_canvas_height
         self.canvas.config(height=self.graph_height)
@@ -222,7 +222,7 @@ class PingApp(tk.Tk):
         self.title("Network Ping Graph")
         self.configure(bg="#222222")
         self.geometry("987x600")
-        self.minsize(400, 300)
+        self.minsize(40, 30)
         self.ping_rate = 1.0
         self.ping_timeout = 4
         self.ping_size = 1
@@ -516,7 +516,7 @@ class PingApp(tk.Tk):
         if self.always_on_top_var.get():
             self.attributes("-topmost", True)
             self.overrideredirect(True)
-            self.geometry("987x300")
+            self.geometry("200x150")
         else:
             self.attributes("-topmost", False)
             self.overrideredirect(False)
