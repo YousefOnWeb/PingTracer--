@@ -463,8 +463,13 @@ class PingApp(tk.Tk):
         self.sobad_entry.insert(0, str(self.so_bad_threshold))
 
         self.start_button = tk.Button(self.options_frame, text="Start", font=("TkDefaultFont", 9),
-                                      command=self.start_pinging, width=8)
+                                    command=self.start_pinging, width=8)
+        self.start_button.focus_set()
         self.start_button.grid(row=2, column=4, padx=10, pady=5)
+
+        # Bind Enter and KP_Enter to start button
+        self.bind('<Return>', lambda event: self.start_button.invoke())
+        self.bind('<KP_Enter>', lambda event: self.start_button.invoke())
 
         print("[UI] Options frame ready")
 
@@ -503,6 +508,7 @@ class PingApp(tk.Tk):
 
         self.stop_button = tk.Button(self.status_frame, text="Stop", font=("TkDefaultFont", 8), command=self.stop_pinging, width=6)
         self.stop_button.pack(side=tk.LEFT, padx=5, pady=2)
+        self.bind('<Escape>', lambda event: self.stop_button.invoke()) # Allow stop with Escape key
 
         self.always_on_top_var = tk.BooleanVar(value=False)
         self.always_on_top_check = tk.Checkbutton(self.status_frame, text="On Top",
