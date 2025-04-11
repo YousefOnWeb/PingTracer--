@@ -2,7 +2,7 @@ import subprocess
 import platform
 import re
 
-def trace_route(target, max_hops=None, no_resolve=False, ipv4=False, ipv6=False, timeout=None, source=None, gateway=None):
+def trace_route(target, max_hops=None, no_resolve=False, ipv4=True, ipv6=False, timeout=None, source=None, gateway=None):
     """
     Performs a network route trace to the target and returns the route in a unified format.
 
