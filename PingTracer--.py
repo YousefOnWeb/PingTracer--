@@ -13,8 +13,6 @@ from traceroute_tool import trace_route  # Assuming this file exists and works
 from ping3 import ping
 
 # functions for color interpolation
-
-
 def interpolate(a, b, t):
     """Linear interpolation between two numbers a and b with t in [0,1]."""
     return a + (b - a) * t

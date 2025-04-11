@@ -8,15 +8,16 @@ class Config(argparse.ArgumentParser):
 
     def __init__(self):
         super().__init__(
-            description="A script that pings a domain with configurable settings.",
+            description="A terminal UI tool to continuously ping a target host and visualize latency in real-time, with configurable rates, timeouts, and color-coded thresholds.",
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         )
 
         self.add_argument(
-            "domain",
-            nargs="?",  # Makes the positional argument optional
-            default="google.com",  # Default value if not provided
-            metavar="DOMAIN",  # Often good practice for positional args help
+            "--domain",
+            "--d",
+            type=str,
+            default="google.com",
+            metavar="DOMAIN",
             help="The domain or IP address to ping.",
         )
 
@@ -26,7 +27,7 @@ class Config(argparse.ArgumentParser):
             "-r",
             type=float,
             default=1.0,
-            metavar="RATE",  # Add metavar for clarity in help
+            metavar="RATE",
             help="Number of pings per second.",
         )
 
@@ -45,7 +46,7 @@ class Config(argparse.ArgumentParser):
             "--ping-size",
             "-s",
             type=int,
-            default=1,  # Note: Very small default size for ICMP. Often defaults are larger (e.g., 32, 56, 64)
+            default=1,
             metavar="BYTES",
             help="Payload size for each ping in bytes.",
         )
