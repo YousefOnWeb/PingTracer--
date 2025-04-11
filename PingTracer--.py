@@ -1,7 +1,6 @@
 import tkinter as tk
 import threading
 import queue
-import config
 
 try:
     from PIL import Image, ImageDraw, ImageTk
@@ -9,8 +8,10 @@ except ImportError:
     print("Pillow library not found. Please install it: pip install Pillow")
     exit()
 
-from traceroute_tool import trace_route  # Assuming this file exists and works
+from config import Config
+from traceroute_tool import trace_route
 from ping3 import ping
+
 
 # functions for color interpolation
 def interpolate(a, b, t):
@@ -27,16 +28,15 @@ def interpolate_color_tuple(color1, color2, t):
 
 
 # define base colors (in RGB tuples for PIL)
-GREEN = (0, 255, 0)
-YELLOW = (255, 255, 0)
-RED = (255, 0, 0)
+GREEN = (0, 255, 0)  # good ping color as RGB tuple
+YELLOW = (255, 255, 0)  # slow ping color as RGB tuple
+RED = (255, 0, 0)  # bad ping color as RGB tuple
 BLUE = (0, 0, 255)  # Timeout color as RGB tuple
+
 BLACK = (0, 0, 0)  # Background color for image
 
 # a constant for the fixed label height (in pixels)
 LABEL_HEIGHT = 6
-
-# PingGraph class (refactored for image buffer)
 
 
 class PingGraph(tk.Frame):
@@ -154,9 +154,9 @@ class PingGraph(tk.Frame):
 
         print(f"[RESIZE {self.host_ip}] Triggered. New size: {new_width}x{new_height}")
 
-        # create the buffer with the new dimensions
+        # stop if buffer creation failed
         if not self._create_or_resize_buffer(new_width, new_height):
-            return  # stop if buffer creation failed
+            return
 
         # redraw existing data into the new buffer
         self.redraw_image_buffer()
@@ -171,6 +171,7 @@ class PingGraph(tk.Frame):
         print(
             f"[REDRAW {self.host_ip}] Redrawing image buffer ({self.current_width}x{self.graph_height})"
         )
+
         # clear the image (fill with black).. important for resize!
         draw = ImageDraw.Draw(self.pil_image)
         draw.rectangle([0, 0, self.current_width, self.graph_height], fill=BLACK)
@@ -210,37 +211,41 @@ class PingGraph(tk.Frame):
             return
 
         h = pil_img.height
-        if h <= 0:
-            return  # cannot draw on zero-height image
+        ## Ensure the height is valid, otherwise skip drawing
+        if h < 0:
+            return
 
-        if (
-            ping_value is None or ping_value is False or ping_value < 0
-        ):  # Timeout or invalid host or invalid ping value less than 0
+        # if ping_value is invalid (less than 0), use blue
+        if  ping_value < 0:
             lh = h
-            col = BLUE  # use RGB tuple
-        elif ping_value <= 1 and ping_value >= 0:  # extremely low ping time
-            lh = 1  # draw a minimal line to show it's not a timeout
+            col = BLUE
+        # elif ping_value is extremely low (0<->1ms), use green
+        elif ping_value < 1:
+            lh = 1
             col = GREEN
-        elif ping_value < bad_threshold:  # Use app thresholds
+        # elif ping_value is extremely high (e.g., 1ms<->bad_threshold), use yellow or green
+        elif ping_value < bad_threshold:
             f = ping_value / bad_threshold
-            lh = max(1, int(interpolate(1, h * 0.5, f)))  # Start from 1px height
+            lh = max(1, int(interpolate(1, h * 0.5, f)))
             col = interpolate_color_tuple(GREEN, YELLOW, f)
+        # elif ping_value is extremely high (e.g., bad_threshold<->so_bad_threshold), use red or yellow
         elif ping_value < so_bad_threshold:
             f = (ping_value - bad_threshold) / (so_bad_threshold - bad_threshold)
             lh = int(interpolate(h * 0.5, h, f))
             col = interpolate_color_tuple(YELLOW, RED, f)
-        else:  # Very high ping
+        # elif ping_value is extremely high (e.g., <so_bad_threshold), use red
+        else:
             lh = h
             col = RED
 
-        lh = min(h, max(1, lh))  # Clamp line height between 1 and canvas height
+        lh = min(h, max(1, lh))
         y0 = h - lh
         y1 = h - 1  # Draw up to the last pixel row
 
         # Draw the line directly on the PIL image
         # Use ImageDraw.line for simplicity, though drawing pixel by pixel might be marginally faster for vertical lines
         try:
-            draw = ImageDraw.Draw(pil_img)
+            ImageDraw.Draw(pil_img)
             # draw.line((x, y0, x, y1), fill=col, width=1) # width=1 is default
             # setting pixels might be faster
             for y in range(int(y0), int(y1 + 1)):
@@ -315,7 +320,6 @@ class PingGraph(tk.Frame):
             # Update the existing canvas item efficiently
             self.canvas.itemconfig(self.image_on_canvas, image=self.photo_image)
         else:
-            # Should ideally not happen after the initial setup/resize
             print(
                 f"[WARN {self.host_ip}] image_on_canvas is None during add_ping. Creating."
             )
@@ -328,9 +332,7 @@ class PingGraph(tk.Frame):
     def get_info_text(self, extra=""):
         # Filter visible pings based on *stored data*, not buffer index
         # The image buffer only shows a window, stats should reflect actual history
-        canvas_width = (
-            self.canvas.winfo_width() or 1
-        )  # Avoid division by zero if width is 0
+        canvas_width = self.canvas.winfo_width() or 1
         visible_ping_data = self.pings[-canvas_width:]  # Get data for visible range
         successful_visible = [
             p for p in visible_ping_data if isinstance(p, (int, float)) and p > 0
@@ -348,7 +350,7 @@ class PingGraph(tk.Frame):
                 round(ping_value, 2)
                 if isinstance(ping_value := self.pings[-1], (int, float))
                 else "N/A"
-            )  # Use actual last ping stored
+            )
             total_visible = len(visible_ping_data)
             losses_visible = len(
                 [
@@ -430,21 +432,21 @@ class PingGraph(tk.Frame):
         if self.hover_timer is not None:
             self.after_cancel(self.hover_timer)
             self.hover_timer = None
-        self.update_info()  # Restore default info text
+        self.update_info()
 
 
 class PingRunner(threading.Thread):
     def __init__(
         self, host_ip, ping_timeout, ping_size, rate, result_queue, index, stop_event
     ):
-        print(f"[THREAD INIT] PingRunner for {host_ip}")  # Reduce noise
+        print(f"[THREAD INIT] PingRunner for {host_ip}")
         super().__init__()
         self.host_ip = host_ip
         self.ping_timeout = ping_timeout
         self.ping_size = ping_size
         self.rate = rate
         self.result_queue = result_queue
-        self.index = index  # Index of the *round* of pings, not graph index
+        self.index = index
         self.stop_event = stop_event
 
     def run(self):
@@ -797,7 +799,6 @@ class PingApp(tk.Tk):
         self.stop_button.config(state=tk.NORMAL)
 
         print("[INFO] Starting traceroute thread...")
-        # Add a temporary status label in the graph area?
         self.status_label = tk.Label(
             self.graph_frame,
             text=f"Tracing route to {target}...",
@@ -846,7 +847,6 @@ class PingApp(tk.Tk):
                 fg="red",
             )
             error_label.pack(pady=20)
-            # Schedule removal of error message and go back to options?
             self.after(5000, self.stop_pinging)  # Stop after 5s
             return
 
@@ -949,8 +949,6 @@ class PingApp(tk.Tk):
         pg = self.ping_graphs[host_ip]
         if is_visible:
             print(f"[TOGGLE {host_ip}] Showing graph")
-            # Re-pack the specific graph - order matters less now maybe?
-            # Or call refresh_graph_packs to maintain order.
             cb.config(relief=tk.RAISED)  # Update checkbox appearance
         else:
             print(f"[TOGGLE {host_ip}] Hiding graph")
@@ -1006,23 +1004,21 @@ class PingApp(tk.Tk):
 
         # --- Start the pings for this round ---
         current_round = self.ping_round_index
-        print(f"[ROUND {current_round}] Scheduling pings")  # Reduce noise
+        print(f"[ROUND {current_round}] Scheduling pings")
         hosts_to_ping = list(
             self.ping_graphs.keys()
         )  # Ping all hosts currently tracked
 
         if not hosts_to_ping:
-            print("[SCHEDULER] No hosts to ping. Stopping?")
-            self.stop_pinging()  # Or maybe just wait? For now, stop.
+            print("[SCHEDULER] No hosts to ping. Stopping!")
+            self.stop_pinging()
             return
 
         active_threads = []
         for host_ip in hosts_to_ping:
-            # Only create thread if graph is visible? No, ping all, update all data.
-            # Visibility only affects display packing.
             if self.stop_event.is_set():
-                break  # Check before spawning each thread
-            print(f"[PING START {host_ip}] Round {current_round}")  # Reduce noise
+                break
+            print(f"[PING START {host_ip}] Round {current_round}")
             runner = PingRunner(
                 host_ip,
                 self.config.ping_timeout,
@@ -1093,7 +1089,7 @@ class PingApp(tk.Tk):
             print("[CLEANUP] No unresponsive graphs found.")
             return
 
-        # Ensure we don't remove *all* graphs if traceroute somehow returned only bad ones initially
+        # if traceroute returned only bad ones, return
         if len(kept_ips) == 0 and len(remove_ips) > 0:
             print("[CLEANUP] All graphs are unresponsive, keeping them for now.")
             return
@@ -1112,7 +1108,6 @@ class PingApp(tk.Tk):
                 except ValueError:
                     pass
 
-        # After removing, refresh the layout of remaining graphs
         self.refresh_graph_packs()
 
     def process_ping_results(self):
@@ -1131,13 +1126,10 @@ class PingApp(tk.Tk):
                     self.ping_graphs[host_ip].add_ping(value)
                 else:
                     print(f"[WARN] Received result for unknown/removed host: {host_ip}")
-
         except queue.Empty:
-            pass  # No more results for now
+            pass
         except Exception as e:
-            print(
-                f"[ERROR] Exception in process_ping_results: {e}"
-            )  # Catch other errors
+            print(f"[ERROR] Exception in process_ping_results: {e}")
 
         # Reschedule check even if errors occur
         self.after(50, self.process_ping_results)  # Check queue every 50ms
@@ -1151,7 +1143,6 @@ class PingApp(tk.Tk):
             self.after_cancel(self._scheduled_ping_after_id)
             self._scheduled_ping_after_id = None
 
-        # --- UI Changes (Optional based on clear_ui) ---
         if clear_ui:
             # Destroy graphs and checkboxes
             for widget in self.graph_frame.winfo_children():
@@ -1179,33 +1170,22 @@ class PingApp(tk.Tk):
         self.ping_graphs.clear()
         self.ping_order.clear()
 
-        # Consume any remaining items in the queue? Maybe not necessary.
-
         print("[STOP] Pinging stopped.")
 
     def set_always_on_top(self):
         is_on_top = self.always_on_top_var.get()
         print(f"[UI] Setting Always on Top: {is_on_top}")
         self.attributes("-topmost", is_on_top)
-        # Basic geometry change for minimal mode - adjust as needed
-        # if is_on_top:
-        #     self.overrideredirect(True) # Optional: remove title bar
-        #     self.geometry("300x200+10+10") # Smaller size, fixed position?
-        # else:
-        #     self.overrideredirect(False) # Restore title bar
-        #     self.geometry("987x600") # Restore default size
 
     def on_close(self):
         """Gracefully stop threads and close the app."""
         print("Closing application...")
         self.stop_pinging()
-        # Give threads a moment to stop (optional)
-        # time.sleep(0.2)
         self.destroy()
 
 
 if __name__ == "__main__":
-    config_parser = config.Config()
+    config_parser = Config()
     args = config_parser.parse_args()
     app = PingApp(args)
     app.protocol("WM_DELETE_WINDOW", app.on_close)  # Handle window close button

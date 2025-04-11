@@ -5,7 +5,6 @@ class Config(argparse.ArgumentParser):
     """
     An ArgumentParser subclass to define configuration options for the ping script.
     """
-
     def __init__(self):
         super().__init__(
             description="A terminal UI tool to continuously ping a target host and visualize latency in real-time, with configurable rates, timeouts, and color-coded thresholds.",
