@@ -178,10 +178,10 @@ class PingGraph(tk.Frame):
         h = pil_img.height
         if h <= 0: return # cannot draw on zero-height image
 
-        if ping_value is None or ping_value is False: # Timeout
+        if ping_value is None or ping_value is False or ping_value < 0: # Timeout or invalid host or invalid ping value less than 0
             lh = h
             col = BLUE # use RGB tuple
-        elif ping_value <= 0: # error or immediate response (treat as good)
+        elif ping_value <= 1 and ping_value >= 0: # extremely low ping time
             lh = 1 # draw a minimal line to show it's not a timeout
             col = GREEN
         elif ping_value < app.bad_threshold: # Use app thresholds
@@ -286,7 +286,7 @@ class PingGraph(tk.Frame):
             avg = round(sum(successful_visible) / len(successful_visible), 2)
             last = round(ping_value, 2) if isinstance(ping_value:=self.pings[-1],(int,float)) else 'N/A' # Use actual last ping stored
             total_visible = len(visible_ping_data)
-            losses_visible = len([p for p in visible_ping_data if p is None or p is False or (isinstance(p, (int, float)) and p <= 0)])
+            losses_visible = len([p for p in visible_ping_data if p is None or p is False or (isinstance(p, (int, float)) and p < 0)])
             loss_percent = round((losses_visible / total_visible) * 100, 2) if total_visible > 0 else 0
             jitters = [abs(successful_visible[i] - successful_visible[i - 1]) for i in range(1, len(successful_visible))]
             jitter = round(sum(jitters) / len(jitters), 2) if jitters else 0
@@ -891,7 +891,7 @@ class PingApp(tk.Tk):
                     # Convert valid pings to float, keep None/False as is
                     if isinstance(ping_value, (int, float)):
                         value = round(ping_value, 2) if ping_value > 0 else 0.0 # Treat <=0 as 0.0 graphically? Or False? Let's use False
-                        if value <= 0: value = False # Consistent representation for timeout/error
+                        if value < 0: value = False
                     elif ping_value is None or ping_value is False:
                          value = False # Use False consistently for timeout/error
                     else:
