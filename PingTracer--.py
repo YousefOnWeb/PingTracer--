@@ -47,23 +47,21 @@ class PingGraph(tk.Frame):
         super().__init__(master, bg="#222222", **kwargs)
         self.host_ip = host_ip
         self.host_hostname = host_hostname
-        self.graph_height = max(3, int(init_graph_height))  # Ensure minimum height
 
         self.pings = []  # stores all historical ping values (None, False, or float ms)
 
-        self.canvas = tk.Canvas(
-            self, bg="black", height=self.graph_height, highlightthickness=0
-        )
-        self.canvas.pack(fill=tk.X, expand=True, side=tk.BOTTOM)
-
         # image buffer attributes
         self.pil_image = None  # PIL Image object
-        self.photo_image = (
-            None  # Tkinter PhotoImage object (needs persistent reference)
-        )
+        self.photo_image = None
         self.image_on_canvas = None  # ID of the image item on the canvas
         self.current_width = 0  # Tracks the canvas width for buffer size
+        self.current_height = max(3, int(init_graph_height))
         self.current_buffer_index = 0  # Tracks the next drawing position in the buffer
+
+        self.canvas = tk.Canvas(
+            self, bg="black", height=self.current_height, highlightthickness=0
+        )
+        self.canvas.pack(fill=tk.X, expand=True, side=tk.BOTTOM)
 
         # create info label
         self.info_label = tk.Label(
@@ -74,8 +72,7 @@ class PingGraph(tk.Frame):
             fg="white",
             font=("TkDefaultFont", 8),
         )
-        self.info_label.pack(fill=tk.X, side=tk.TOP)  # Pack label above canvas
-
+        self.info_label.pack(fill=tk.X, side=tk.TOP)
         # bind events
         self.canvas.bind("<Motion>", self.on_mouse_move)
         self.canvas.bind("<Leave>", self.on_mouse_leave)
@@ -83,7 +80,6 @@ class PingGraph(tk.Frame):
 
         self.canvas.bind("<Configure>", self.on_resize)  # bind to canvas resize
 
-        # initial drawing setup
         # self.after(10, self._initial_buffer_setup) # Defer initial setup slightly
 
         print(f"[INIT COMPLETE] PingGraph initialized for {host_ip}")
@@ -98,7 +94,7 @@ class PingGraph(tk.Frame):
 
         print(f"[BUFFER {self.host_ip}] Creating/Resizing buffer to {width}x{height}")
         self.current_width = width
-        self.graph_height = height  # Update internal height tracking
+        self.current_height = height
 
         try:
             # create a new black PIL Image
@@ -129,52 +125,47 @@ class PingGraph(tk.Frame):
             self.image_on_canvas = None
             return False
 
-    def on_resize(self, event=None):
+    def on_resize(self, event=None):  # Accept event argument
         """Handles canvas resize events."""
-        new_width = self.canvas.winfo_width()
-        new_height = self.canvas.winfo_height()  # Use actual canvas height
+        # Use event data if available, otherwise query widget
+        new_width = event.width if event else self.canvas.winfo_width()
+        new_height = event.height if event else self.canvas.winfo_height()
 
-        # prevent unnecessary buffer recreation if size hasn't changed
+        # Check if size actually changed and is valid
         if (
-            new_width == self.current_width
-            and new_height == self.graph_height
-            and self.pil_image
+            (
+                new_width == self.current_width
+                and new_height == self.current_height
+                and self.pil_image
+            )
+            or new_width <= 0
+            or new_height < 3
         ):
             print(
-                f"[RESIZE SKIP {self.host_ip}] Size unchanged ({new_width}x{new_height})"
+                f"[RESIZE SKIP/WAIT {self.host_ip}] Size {new_width}x{new_height}, Current {self.current_width}x{self.current_height}"
             )
-            return
-
-        if new_width <= 0 or new_height < 3:
-            print(
-                f"[RESIZE WAIT {self.host_ip}] Canvas not ready or too small ({new_width}x{new_height})"
-            )
-            # if i want to retry schedule: self.after(50, self.on_resize)
             return
 
         print(f"[RESIZE {self.host_ip}] Triggered. New size: {new_width}x{new_height}")
 
-        # stop if buffer creation failed
         if not self._create_or_resize_buffer(new_width, new_height):
             return
 
-        # redraw existing data into the new buffer
         self.redraw_image_buffer()
         print(f"[RESIZE COMPLETE {self.host_ip}] Buffer resized and redrawn")
 
     def redraw_image_buffer(self):
         """Redraws the visible portion of ping history onto the PIL buffer."""
-        if not self.pil_image or self.current_width <= 0:
+        if not self.pil_image or self.current_width < 0 or self.current_height < 0:
             print(f"[REDRAW WARN {self.host_ip}] Cannot redraw, buffer not ready.")
             return
 
         print(
-            f"[REDRAW {self.host_ip}] Redrawing image buffer ({self.current_width}x{self.graph_height})"
+            f"[REDRAW {self.host_ip}] Redrawing image buffer ({self.current_width}x{self.current_height})"
         )
 
-        # clear the image (fill with black).. important for resize!
         draw = ImageDraw.Draw(self.pil_image)
-        draw.rectangle([0, 0, self.current_width, self.graph_height], fill=BLACK)
+        draw.rectangle([0, 0, self.current_width, self.current_height], fill=BLACK)
 
         # determine which pings are visible
         visible_pings = self.pings[-self.current_width :]
@@ -183,12 +174,12 @@ class PingGraph(tk.Frame):
 
         # draw each visible ping onto the buffer
         for idx, val in enumerate(visible_pings):
-            self.draw_line_on_image(
-                idx, val, self.pil_image
-            )  # Draw directly on PIL image
+            self.draw_line_on_image(idx, val, self.pil_image)
 
         # update the current buffer index
-        self.current_buffer_index = num_visible
+        self.current_buffer_index = (
+            num_visible % self.current_width
+        )  # Index within the buffer window
 
         # update the PhotoImage displayed on the canvas
         # important: create a new PhotoImage from the *modified* pil_image
@@ -207,16 +198,17 @@ class PingGraph(tk.Frame):
         """Draws a single vertical line on the provided PIL Image object."""
         bad_threshold = app.config.bad_threshold
         so_bad_threshold = app.config.so_bad_threshold
+
         if not pil_img:
             return
 
         h = pil_img.height
-        ## Ensure the height is valid, otherwise skip drawing
-        if h < 0:
-            return
+        # Ensure the height is valid, otherwise skip drawing
+        if h <= 0:
+            return  # Bounds check for x too
 
         # if ping_value is invalid (less than 0), use blue
-        if  ping_value < 0:
+        if ping_value < 0:
             lh = h
             col = BLUE
         # elif ping_value is extremely low (0<->1ms), use green
@@ -269,7 +261,7 @@ class PingGraph(tk.Frame):
         if (
             not self.pil_image
             or self.current_width != canvas_width
-            or self.graph_height != canvas_height
+            or self.current_height != canvas_height
         ):
             print(
                 f"[PING WARN {self.host_ip}] Buffer mismatch or missing. Triggering resize/redraw."
@@ -299,14 +291,17 @@ class PingGraph(tk.Frame):
             print(f"[SHIFT {self.host_ip}] Shifting buffer content left")
             # Crop image excluding the first column
             shifted_region = self.pil_image.crop(
-                (1, 0, self.current_width, self.graph_height)
+                (1, 0, self.current_width, canvas_height)
             )
             # Paste it back, shifted one pixel to the left
             self.pil_image.paste(shifted_region, (0, 0))
             # Clear the last column (draw a black rectangle)
             draw = ImageDraw.Draw(self.pil_image)
             draw.rectangle(
-                [(self.current_width - 1, 0), (self.current_width, self.graph_height)],
+                [
+                    (self.current_width - 1, 0),
+                    (self.current_width, canvas_height),
+                ],
                 fill=BLACK,
             )
             # Draw the new ping value in the last column
@@ -324,7 +319,7 @@ class PingGraph(tk.Frame):
                 f"[WARN {self.host_ip}] image_on_canvas is None during add_ping. Creating."
             )
             self.image_on_canvas = self.canvas.create_image(
-                0, 0, anchor=tk.NW, image=self.photo_image
+                0, 0, anchor=tk.NW, image=self.photo_image, sticky="w"
             )
 
         self.update_info()
@@ -339,7 +334,7 @@ class PingGraph(tk.Frame):
         ]
 
         print(
-            f"[INFO TEXT {self.host_ip}] Generating info. Total pings: {len(self.pings)}, Visible data points: {len(visible_ping_data)}"
+            # f"[INFO TEXT {self.host_ip}] Generating info. Total pings: {len(self.pings)}, Visible data points: {len(visible_ping_data)}"
         )
 
         if successful_visible:
@@ -460,16 +455,14 @@ class PingRunner(threading.Thread):
             result = ping(
                 self.host_ip, timeout=timeout_sec, size=self.ping_size, unit="ms"
             )
-            print(
-                f"[PING RESULT] Host: {self.host_ip}, Result: {result}"
-            )  # Reduce noise
+            print(f"[PING RESULT] Host: {self.host_ip}, Result: {result}")
         except Exception as e:
             print(f"[PING ERROR] Host: {self.host_ip}, Error: {e}")  # Reduce noise
             result = False  # Indicate error/timeout consistently
         # Only put result if not stopped during ping
         if not self.stop_event.is_set():
             self.result_queue.put((self.host_ip, self.index, result))
-        else:
+            # else:
             print(f"[THREAD STOP] Stop event set after pinging {self.host_ip}")
 
 
@@ -502,93 +495,91 @@ class PingApp(tk.Tk):
 
     def build_options_frame(self):
         print("[UI] Building options frame")
-        self.options_frame = tk.Frame(self, bg="#333333")
-        self.options_frame.pack(fill=tk.X, side=tk.TOP)
+        self.control_frame = tk.Frame(self, bg="#333333")
+        self.control_frame.pack(fill=tk.X, side=tk.TOP)
 
         # --- Row 0 ---
         tk.Label(
-            self.options_frame,
+            self.control_frame,
             text="Host:",
             bg="#333333",
             fg="white",
             font=("TkDefaultFont", 8),
         ).grid(row=0, column=0, padx=2, pady=2, sticky="w")
-        self.host_entry = tk.Entry(self.options_frame, width=20)
-        self.host_entry.grid(row=0, column=1, padx=2, pady=2)
+        self.host_entry = tk.Entry(self.control_frame, width=20)
+        self.host_entry.grid(row=0, column=1, padx=2, pady=2, sticky="w")
         self.host_entry.insert(0, self.config.domain)  # Default domain from config
 
         tk.Label(
-            self.options_frame,
+            self.control_frame,
             text="Pings/sec:",
             bg="#333333",
             fg="white",
             font=("TkDefaultFont", 8),
         ).grid(row=0, column=2, padx=2, pady=2, sticky="w")
-        self.rate_entry = tk.Entry(self.options_frame, width=5)
+        self.rate_entry = tk.Entry(self.control_frame, width=5)
         self.rate_entry.grid(row=0, column=3, padx=2, pady=2)
         self.rate_entry.insert(0, str(self.config.ping_rate))
         self.rate_label = tk.Label(
-            self.options_frame,
+            self.control_frame,
             text=self.get_rate_text(self.config.ping_rate),
             bg="#333333",
             fg="white",
             font=("TkDefaultFont", 8),
         )
-        self.rate_label.grid(
-            row=0, column=4, columnspan=3, padx=2, pady=2, sticky="w"
-        )  # Span more cols
+        self.rate_label.grid(row=0, column=4, columnspan=3, padx=2, pady=2, sticky="w")
 
         self.rate_entry.bind("<FocusOut>", lambda e: self.update_rate_label())
         self.rate_entry.bind("<Return>", lambda e: self.update_rate_label())
 
         # --- Row 1 ---
         tk.Label(
-            self.options_frame,
+            self.control_frame,
             text="Timeout(s):",
             bg="#333333",
             fg="white",
             font=("TkDefaultFont", 8),
         ).grid(row=1, column=0, padx=2, pady=2, sticky="w")
-        self.timeout_entry = tk.Entry(self.options_frame, width=5)
+        self.timeout_entry = tk.Entry(self.control_frame, width=5)
         self.timeout_entry.grid(row=1, column=1, padx=2, pady=2)
         self.timeout_entry.insert(0, str(self.config.ping_timeout))
 
         tk.Label(
-            self.options_frame,
+            self.control_frame,
             text="Size(B):",
             bg="#333333",
             fg="white",
             font=("TkDefaultFont", 8),
         ).grid(row=1, column=2, padx=2, pady=2, sticky="w")
-        self.size_entry = tk.Entry(self.options_frame, width=5)
+        self.size_entry = tk.Entry(self.control_frame, width=5)
         self.size_entry.grid(row=1, column=3, padx=2, pady=2)
         self.size_entry.insert(0, str(self.config.ping_size))
 
         # --- Row 2 ---
         tk.Label(
-            self.options_frame,
+            self.control_frame,
             text="Bad(ms):",
             bg="#333333",
             fg="white",
             font=("TkDefaultFont", 8),
         ).grid(row=2, column=0, padx=2, pady=2, sticky="w")
-        self.bad_entry = tk.Entry(self.options_frame, width=5)
+        self.bad_entry = tk.Entry(self.control_frame, width=5)
         self.bad_entry.grid(row=2, column=1, padx=2, pady=2)
         self.bad_entry.insert(0, str(self.config.bad_threshold))
 
         tk.Label(
-            self.options_frame,
+            self.control_frame,
             text="So Bad(ms):",
             bg="#333333",
             fg="white",
             font=("TkDefaultFont", 8),
         ).grid(row=2, column=2, padx=2, pady=2, sticky="w")
-        self.sobad_entry = tk.Entry(self.options_frame, width=5)
+        self.sobad_entry = tk.Entry(self.control_frame, width=5)
         self.sobad_entry.grid(row=2, column=3, padx=2, pady=2)
         self.sobad_entry.insert(0, str(self.config.so_bad_threshold))
 
         self.start_button = tk.Button(
-            self.options_frame,
+            self.control_frame,
             text="Start",
             font=("TkDefaultFont", 9),
             command=self.start_pinging,
@@ -598,8 +589,8 @@ class PingApp(tk.Tk):
         self.start_button.grid(row=2, column=4, padx=10, pady=5)
 
         # Bind Enter and KP_Enter to start button
-        self.bind("<Return>", lambda event: self.start_button.invoke())
-        self.bind("<KP_Enter>", lambda event: self.start_button.invoke())
+        self.bind("<Return>", lambda event: self.handle_enter())
+        self.bind("<KP_Enter>", lambda event: self.handle_enter())
 
         print("[UI] Options frame ready")
 
@@ -625,9 +616,7 @@ class PingApp(tk.Tk):
                 rate = 50  # Max practical rate
             self.config.ping_rate = rate
             self.rate_entry.delete(0, tk.END)
-            self.rate_entry.insert(
-                0, str(self.config.ping_rate)
-            )  # Update entry with clamped value
+            self.rate_entry.insert(0, str(self.config.ping_rate))
             print(f"[SETTINGS] Updated ping rate to {self.ping_rate}")
         except ValueError:
             # Revert to current value if input is invalid
@@ -681,10 +670,17 @@ class PingApp(tk.Tk):
     def build_graph_frame(self):
         self.graph_frame = tk.Frame(self, bg="#222222")
         self.graph_frame.pack(fill=tk.BOTH, expand=True, side=tk.BOTTOM)
-        # No need to bind Configure here, PingGraph binds to its own canvas
 
     # def on_graph_frame_resize(self, event): # Removed - handled by individual graphs now
-    #     pass
+    def handle_enter(self):
+        """Invoke Start or focus Host if stopped."""
+        if not self.running:
+            self.start_button.invoke()
+
+    def handle_escape(self):
+        """Invoke Stop if running."""
+        if self.running:
+            self.stop_button.invoke()
 
     def _read_settings(self):
         """Reads and validates settings from entry widgets."""
@@ -793,7 +789,7 @@ class PingApp(tk.Tk):
         self._read_settings()  # Read and validate settings from UI
 
         # Switch UI
-        self.options_frame.pack_forget()
+        self.control_frame.pack_forget()
         self.status_frame.pack(fill=tk.X, side=tk.TOP)
         self.start_button.config(state=tk.DISABLED)  # Disable start while running
         self.stop_button.config(state=tk.NORMAL)
@@ -1153,7 +1149,7 @@ class PingApp(tk.Tk):
 
             # Switch back to options view
             self.status_frame.pack_forget()
-            self.options_frame.pack(fill=tk.X, side=tk.TOP)
+            self.control_frame.pack(fill=tk.X, side=tk.TOP)
 
             # Reset always on top if it was set
             if self.always_on_top_var.get():
