@@ -70,4 +70,11 @@ class Config(argparse.ArgumentParser):
             metavar="MS",
             help="Latency threshold (ms) to consider a ping 'so bad' (e.g., red).",
         )
-
+        
+        # auto start
+        self.add_argument(
+            "--start",
+            "-S",
+            action="store_true",
+            help="If present, indicates that the process should auto start",
+        )
