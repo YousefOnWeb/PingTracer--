@@ -490,8 +490,15 @@ class PingApp(tk.Tk):
         self.build_status_frame()
         self.build_graph_frame()
 
+        self.handle_auto_start()
         self.after(100, self.process_ping_results)  # Start processing queue
         print("[APP INIT COMPLETE]")
+
+    def handle_auto_start(self):
+        """Check if auto-start is enabled and start pinging if so."""
+        if self.config.start:
+            self.config.start = False
+            self.start_pinging()  # Start pinging immediately
 
     def build_options_frame(self):
         print("[UI] Building options frame")
