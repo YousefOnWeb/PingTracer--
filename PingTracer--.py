@@ -181,8 +181,8 @@ class PingGraph(tk.Frame):
         if ping_value is None or ping_value is False or ping_value < 0: # Timeout or invalid host or invalid ping value less than 0
             lh = h
             col = BLUE # use RGB tuple
-        elif ping_value <= 1 and ping_value >= 0: # extremely low ping time
-            lh = 1 # draw a minimal line to show it's not a timeout
+        elif ping_value <= 1
+            lh = 1 # draw a minimal line
             col = GREEN
         elif ping_value < app.bad_threshold: # Use app thresholds
             f = ping_value / app.bad_threshold
@@ -890,8 +890,10 @@ class PingApp(tk.Tk):
                 if host_ip in self.ping_graphs:
                     # Convert valid pings to float, keep None/False as is
                     if isinstance(ping_value, (int, float)):
-                        value = round(ping_value, 2) if ping_value > 0 else 0.0 # Treat <=0 as 0.0 graphically? Or False? Let's use False
-                        if value < 0: value = False
+                        if ping_value >= 0:
+                            value = round(ping_value, 2)
+                        else:
+                            value = False
                     elif ping_value is None or ping_value is False:
                          value = False # Use False consistently for timeout/error
                     else:
