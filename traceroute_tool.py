@@ -2,7 +2,7 @@ import subprocess
 import platform
 import re
 
-def trace_route(target, max_hops=None, no_resolve=False, ipv4=False, ipv6=False, timeout=None, source=None, gateway=None):
+def trace_route(target, max_hops=None, no_resolve=False, ipv4=True, ipv6=False, timeout=None, source=None, gateway=None):
     """
     Performs a network route trace to the target and returns the route in a unified format.
 
@@ -83,10 +83,10 @@ def trace_route(target, max_hops=None, no_resolve=False, ipv4=False, ipv6=False,
                     current_index += 2
                     entries_processed += 1
                 else:
-                    break  # Unexpected format, skip remaining
+                    break
 
             if entries_processed < 3:
-                continue  # Skip incomplete hop lines
+                continue
 
             host_ip_part = ' '.join(parts[current_index:])
             ip = None
@@ -111,13 +111,14 @@ def trace_route(target, max_hops=None, no_resolve=False, ipv4=False, ipv6=False,
                     if not hostname or hostname == ip:
                         hostname = None
 
+            # Check if IP is valid, if not, set to None
             if ip:
                 if hostname:
                     hops.append([ip, hostname])
                 else:
                     hops.append([ip])
             else:
-                hops.append([None])  # Indicate unknown hop
+                hops.append([None])
     else:
         for line in output.split('\n'):
             line = line.strip()
