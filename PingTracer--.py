@@ -208,7 +208,7 @@ class PingGraph(tk.Frame):
             return  # Bounds check for x too
 
         # if ping_value is invalid (less than 0), use blue
-        if ping_value < 0:
+        if ping_value < 0 or ping_value is False or ping_value is None:
             lh = h
             col = BLUE
         # elif ping_value is extremely low (0<->1ms), use green
