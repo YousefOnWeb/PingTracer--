@@ -548,7 +548,7 @@ class PingApp(tk.Tk):
         print("[APP INIT COMPLETE]") 
 
     def handle_auto_start(self):
-    """Check if auto-start is enabled and start pinging if so."""
+        """Check if auto-start is enabled and start pinging if so."""
         if self.config.start:
             print("[INFO] Auto-starting...") 
             self.config.start = False
@@ -1015,7 +1015,7 @@ class PingApp(tk.Tk):
         except Exception as e:
             print(f"[ERROR] Exception in process_ping_results: {e}")
             import traceback
-            traceback.print_exc() print full traceback for debugging
+            traceback.print_exc() # Print full traceback for debugging
 
         self.after(50, self.process_ping_results) # Reschedule check
 
