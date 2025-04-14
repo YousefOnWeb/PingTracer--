@@ -254,7 +254,7 @@ class PingGraph(tk.Frame):
 
         # --- Update Statistics ---
         total_pings = len(self.pings)
-        if isinstance(ping_value, (int, float)) and ping_value >= 0: # Count 0ms as success for stats
+        if isinstance(ping_value, (int, float)) and ping_value >= 0 and ping_value is not False: # Count 0ms as success for stats
             self.stat_count += 1
             self.stat_sum += ping_value
             self.stat_min = min(self.stat_min, ping_value)
@@ -329,7 +329,7 @@ class PingGraph(tk.Frame):
             maxi = round(self.stat_max, 2) if self.stat_max != float('-inf') else "N/A"
             # Get last value directly from pings array
             last_val = self.pings[-1] if self.pings else None
-            last = round(last_val, 2) if isinstance(last_val, (int, float)) and last_val >= 0 else "N/A"
+            last = round(last_val, 2) if isinstance(last_val, (int, float)) and last_val >= 0 and last_val is not False else "N/A"
             loss_percent = round((self.stat_loss_count / total_pings) * 100, 1) if total_pings > 0 else 0
             jitter = round(self.stat_jitter_sum / self.stat_jitter_count, 2) if self.stat_jitter_count > 0 else 0
 
@@ -386,7 +386,7 @@ class PingGraph(tk.Frame):
         if 0 <= target_index < num_pings:
             value = self.pings[target_index]
             value_str = "Timeout/Error"
-            if isinstance(value, (int, float)) and value >= 0:
+            if isinstance(value, (int, float)) and value >= 0 and value is not False:
                 value_str = f"{round(value, 2)} ms"
             elif value is False or value is None: # Explicit check for common non-numeric results
                 value_str = "Timeout/Error"
